@@ -11,58 +11,107 @@ pygame.mixer.pre_init(22050, -16, 1, 512)
 pygame.init()
 display = (800, 600)
 screen = pygame.display.set_mode(display, DOUBLEBUF | OPENGL)
-pygame.display.set_caption("Duck Shooter 3D")
+pygame.display.set_caption("CYBER DUCK // NEON HUNT")
 
-# Set up projection matrix correctly
+# OpenGL setup
 glMatrixMode(GL_PROJECTION)
 glLoadIdentity()
 gluPerspective(45, (display[0] / display[1]), 0.1, 50.0)
 glMatrixMode(GL_MODELVIEW)
 glEnable(GL_DEPTH_TEST)
+glEnable(GL_BLEND)
+glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
 
-# Font for HUD
+# Fonts
 pygame.font.init()
-font_large = pygame.font.SysFont("Arial", 48, bold=True)
-font_small = pygame.font.SysFont("Arial", 28)
+font_large = pygame.font.SysFont("Courier New", 48, bold=True)
+font_medium = pygame.font.SysFont("Courier New", 32, bold=True)
+font_small = pygame.font.SysFont("Courier New", 22)
+font_tiny = pygame.font.SysFont("Courier New", 16)
 
 
-# --- Procedural Background Music ---
+# --- Synthwave Music Generator ---
 
-def generate_tone(freq, duration, sample_rate=22050, volume=0.3):
-    """Generate a sine wave tone as raw bytes."""
-    n_samples = int(sample_rate * duration)
-    samples = []
-    for i in range(n_samples):
-        t = i / sample_rate
-        # Smooth fade in/out to avoid clicks
-        envelope = 1.0
-        fade = int(sample_rate * 0.05)
-        if i < fade:
-            envelope = i / fade
-        elif i > n_samples - fade:
-            envelope = (n_samples - i) / fade
-        val = math.sin(2 * math.pi * freq * t) * volume * envelope
-        samples.append(int(val * 32767))
-    return samples
-
-
-def generate_ambient_music():
-    """Generate layered ambient background music."""
+def generate_synthwave_music():
+    """Generate layered synthwave/cyberpunk background music."""
     sample_rate = 22050
 
-    # Channel 1: Ambient pad/drone (~4 seconds loop)
-    pad_duration = 4.0
-    n_pad = int(sample_rate * pad_duration)
+    # Channel 1: Deep bass synth (~4 sec loop)
+    # Pulsing sub-bass with slight detune for thickness
+    bass_dur = 4.0
+    n_bass = int(sample_rate * bass_dur)
+    bass_samples = []
+    # Bass pattern: E1-E1-G1-A1 (quarter notes at ~120bpm = 0.5s each)
+    bass_notes = [82.41, 82.41, 98.0, 110.0, 82.41, 73.42, 82.41, 98.0]
+    note_len = n_bass // len(bass_notes)
+    for i in range(n_bass):
+        t = i / sample_rate
+        note_idx = min(i // note_len, len(bass_notes) - 1)
+        freq = bass_notes[note_idx]
+        # Sub bass + slight saw character
+        val = (math.sin(2 * math.pi * freq * t) * 0.3 +
+               math.sin(2 * math.pi * freq * 2 * t) * 0.1 +
+               math.sin(2 * math.pi * freq * 0.5 * t) * 0.15)
+        # Pulse envelope per note
+        pos_in_note = (i % note_len) / note_len
+        env = max(0, 1.0 - pos_in_note * 0.6)
+        # Loop fade
+        fade = int(sample_rate * 0.1)
+        if i < fade:
+            env *= i / fade
+        elif i > n_bass - fade:
+            env *= (n_bass - i) / fade
+        bass_samples.append(int(val * env * 32767))
+
+    bass_bytes = struct.pack(f"<{len(bass_samples)}h", *bass_samples)
+    bass_sound = pygame.mixer.Sound(buffer=bass_bytes)
+    bass_sound.set_volume(0.18)
+
+    # Channel 2: Synth arpeggio (~3 sec loop)
+    arp_dur = 3.0
+    n_arp = int(sample_rate * arp_dur)
+    arp_samples = []
+    # Minor arpeggio pattern (E-G-B-E')
+    arp_notes = [329.63, 392.0, 493.88, 659.25, 493.88, 392.0]
+    arp_note_len = n_arp // len(arp_notes)
+    for i in range(n_arp):
+        t = i / sample_rate
+        note_idx = min(i // arp_note_len, len(arp_notes) - 1)
+        freq = arp_notes[note_idx]
+        # Square-ish wave for that retro synth feel
+        sine = math.sin(2 * math.pi * freq * t)
+        val = (sine * 0.2 +
+               (1.0 if sine > 0 else -1.0) * 0.05)  # slight square mix
+        # Sharp attack, quick decay
+        pos_in_note = (i % arp_note_len) / arp_note_len
+        env = max(0, 1.0 - pos_in_note * 1.5) if pos_in_note < 0.7 else 0
+        fade = int(sample_rate * 0.08)
+        if i < fade:
+            env *= i / fade
+        elif i > n_arp - fade:
+            env *= (n_arp - i) / fade
+        arp_samples.append(int(val * env * 32767))
+
+    arp_bytes = struct.pack(f"<{len(arp_samples)}h", *arp_samples)
+    arp_sound = pygame.mixer.Sound(buffer=arp_bytes)
+    arp_sound.set_volume(0.10)
+
+    # Channel 3: Atmospheric pad (~6 sec loop)
+    pad_dur = 6.0
+    n_pad = int(sample_rate * pad_dur)
     pad_samples = []
     for i in range(n_pad):
         t = i / sample_rate
-        # C3 + G3 fifth interval with slow tremolo
-        tremolo = 0.8 + 0.2 * math.sin(2 * math.pi * 0.5 * t)
-        val = (math.sin(2 * math.pi * 130.81 * t) * 0.15 +
-               math.sin(2 * math.pi * 196.0 * t) * 0.10 +
-               math.sin(2 * math.pi * 261.63 * t) * 0.05) * tremolo
-        # Smooth loop boundary
-        fade = int(sample_rate * 0.3)
+        # Lush detuned pad - minor chord
+        val = (math.sin(2 * math.pi * 164.81 * t) * 0.08 +   # E3
+               math.sin(2 * math.pi * 165.5 * t) * 0.06 +    # E3 detuned
+               math.sin(2 * math.pi * 196.0 * t) * 0.07 +    # G3
+               math.sin(2 * math.pi * 246.94 * t) * 0.06 +   # B3
+               math.sin(2 * math.pi * 329.63 * t) * 0.04)    # E4
+        # Slow LFO modulation
+        lfo = 0.7 + 0.3 * math.sin(2 * math.pi * 0.25 * t)
+        val *= lfo
+        fade = int(sample_rate * 0.5)
         if i < fade:
             val *= i / fade
         elif i > n_pad - fade:
@@ -71,64 +120,35 @@ def generate_ambient_music():
 
     pad_bytes = struct.pack(f"<{len(pad_samples)}h", *pad_samples)
     pad_sound = pygame.mixer.Sound(buffer=pad_bytes)
-    pad_sound.set_volume(0.15)
+    pad_sound.set_volume(0.14)
 
-    # Channel 2: Bird chirps (~6 seconds loop)
-    chirp_duration = 6.0
-    n_chirp = int(sample_rate * chirp_duration)
-    chirp_samples = [0] * n_chirp
-    # Place 4 chirps at random-ish positions
-    rng = random.Random(42)  # deterministic
-    chirp_times = sorted([rng.uniform(0.3, 5.5) for _ in range(4)])
-    for ct in chirp_times:
-        start = int(ct * sample_rate)
-        chirp_len = int(0.08 * sample_rate)
-        base_freq = rng.uniform(1200, 2200)
-        for j in range(chirp_len):
-            if start + j >= n_chirp:
-                break
-            t = j / sample_rate
-            # Frequency sweep down
-            freq = base_freq * (1.0 - 0.4 * (j / chirp_len))
-            env = 1.0 - (j / chirp_len)  # decay envelope
-            val = math.sin(2 * math.pi * freq * t) * env * 0.25
-            chirp_samples[start + j] += int(val * 32767)
-    # Clamp
-    chirp_samples = [max(-32767, min(32767, s)) for s in chirp_samples]
-    chirp_bytes = struct.pack(f"<{len(chirp_samples)}h", *chirp_samples)
-    chirp_sound = pygame.mixer.Sound(buffer=chirp_bytes)
-    chirp_sound.set_volume(0.12)
-
-    # Channel 3: Wind texture (~3 seconds loop)
-    wind_duration = 3.0
-    n_wind = int(sample_rate * wind_duration)
-    rng2 = random.Random(99)
-    raw_noise = [rng2.uniform(-1, 1) for _ in range(n_wind)]
-    # Simple moving average low-pass filter
-    window = 30
-    wind_samples = []
-    running_sum = sum(raw_noise[:window])
-    for i in range(n_wind):
+    # Channel 4: Rain/static texture (~2 sec loop)
+    rain_dur = 2.0
+    n_rain = int(sample_rate * rain_dur)
+    rng = random.Random(777)
+    raw = [rng.uniform(-1, 1) for _ in range(n_rain)]
+    # Bandpass-ish filter for rain
+    window = 15
+    rain_samples = []
+    running_sum = sum(raw[:window])
+    for i in range(n_rain):
         avg = running_sum / window
-        # Fade at boundaries
-        fade = int(sample_rate * 0.2)
-        env = 1.0
+        fade_env = 1.0
+        fade = int(sample_rate * 0.1)
         if i < fade:
-            env = i / fade
-        elif i > n_wind - fade:
-            env = (n_wind - i) / fade
-        wind_samples.append(int(avg * env * 0.15 * 32767))
-        # Slide window
-        old_idx = i
+            fade_env = i / fade
+        elif i > n_rain - fade:
+            fade_env = (n_rain - i) / fade
+        rain_samples.append(int(avg * fade_env * 0.12 * 32767))
         new_idx = i + window
-        if new_idx < n_wind:
-            running_sum += raw_noise[new_idx] - raw_noise[old_idx]
+        if new_idx < n_rain:
+            running_sum += raw[new_idx] - raw[i]
 
-    wind_bytes = struct.pack(f"<{len(wind_samples)}h", *wind_samples)
-    wind_sound = pygame.mixer.Sound(buffer=wind_bytes)
-    wind_sound.set_volume(0.08)
+    rain_bytes = struct.pack(f"<{len(rain_samples)}h", *rain_samples)
+    rain_sound = pygame.mixer.Sound(buffer=rain_bytes)
+    rain_sound.set_volume(0.06)
 
-    return pad_sound, chirp_sound, wind_sound
+    return bass_sound, arp_sound, pad_sound, rain_sound
 
 
 _music_started = False
@@ -139,18 +159,17 @@ def start_music():
     if _music_started:
         return
     _music_started = True
-    pad, chirps, wind = generate_ambient_music()
-    # Play on separate channels, looping forever
-    ch1 = pygame.mixer.Channel(1)
-    ch2 = pygame.mixer.Channel(2)
-    ch3 = pygame.mixer.Channel(3)
-    ch1.play(pad, loops=-1)
-    ch2.play(chirps, loops=-1)
-    ch3.play(wind, loops=-1)
+    bass, arp, pad, rain = generate_synthwave_music()
+    pygame.mixer.Channel(1).play(bass, loops=-1)
+    pygame.mixer.Channel(2).play(arp, loops=-1)
+    pygame.mixer.Channel(3).play(pad, loops=-1)
+    pygame.mixer.Channel(4).play(rain, loops=-1)
 
+
+# --- HUD rendering ---
 
 def draw_text_2d(text, x, y, font, color=(255, 255, 0)):
-    """Render text as a 2D overlay on top of the OpenGL scene."""
+    """Render text as a 2D overlay."""
     text_surface = font.render(text, True, color)
     text_data = pygame.image.tostring(text_surface, "RGBA", True)
     w, h = text_surface.get_size()
@@ -170,7 +189,6 @@ def draw_text_2d(text, x, y, font, color=(255, 255, 0)):
     glRasterPos2f(x, display[1] - y - h)
     glDrawPixels(w, h, GL_RGBA, GL_UNSIGNED_BYTE, text_data)
 
-    glDisable(GL_BLEND)
     glEnable(GL_DEPTH_TEST)
 
     glPopMatrix()
@@ -179,46 +197,61 @@ def draw_text_2d(text, x, y, font, color=(255, 255, 0)):
     glMatrixMode(GL_MODELVIEW)
 
 
-# --- Cloud class ---
-
-class Cloud:
-    def __init__(self, quad):
-        self.x = random.uniform(-12, 12)
-        self.y = random.uniform(4.0, 6.0)
-        self.z = random.uniform(-12, -10)
-        self.speed = random.uniform(0.003, 0.008)
-        self.quad = quad
-        # Generate 3-5 blobs with offsets
-        n_blobs = random.randint(3, 5)
-        self.blobs = []
-        for _ in range(n_blobs):
-            dx = random.uniform(-0.5, 0.5)
-            dy = random.uniform(-0.1, 0.15)
-            dz = random.uniform(-0.15, 0.15)
-            sx = random.uniform(0.3, 0.6)
-            sy = random.uniform(0.15, 0.3)
-            sz = random.uniform(0.2, 0.4)
-            self.blobs.append((dx, dy, dz, sx, sy, sz))
-
-    def update(self):
-        self.x += self.speed
-        if self.x > 14:
-            self.x = -14
-
-    def draw(self):
-        for dx, dy, dz, sx, sy, sz in self.blobs:
-            glPushMatrix()
-            glTranslatef(self.x + dx, self.y + dy, self.z + dz)
-            glScalef(sx, sy, sz)
-            glColor3f(0.95, 0.95, 0.98)
-            gluSphere(self.quad, 1.0, 10, 10)
-            glPopMatrix()
+# --- Neon colors ---
+NEON_PINK = (1.0, 0.08, 0.58)
+NEON_CYAN = (0.0, 1.0, 0.95)
+NEON_YELLOW = (1.0, 0.95, 0.0)
+NEON_PURPLE = (0.7, 0.0, 1.0)
+NEON_ORANGE = (1.0, 0.4, 0.0)
+NEON_GREEN = (0.2, 1.0, 0.3)
+DARK_BG = (0.02, 0.01, 0.06)
 
 
-class Duck:
+# --- Rain particle ---
+
+class RainDrop:
     def __init__(self):
         self.reset()
+
+    def reset(self):
+        self.x = random.uniform(-8, 8)
+        self.y = random.uniform(5, 10)
+        self.z = random.uniform(-12, -1)
+        self.speed = random.uniform(0.08, 0.18)
+        self.length = random.uniform(0.1, 0.3)
+
+    def update(self):
+        self.y -= self.speed
+        if self.y < -1.5:
+            self.reset()
+
+    def draw(self):
+        alpha = 0.15 + 0.1 * (1.0 - abs(self.z + 6) / 6.0)
+        glColor4f(0.4, 0.5, 0.9, alpha)
+        glBegin(GL_LINES)
+        glVertex3f(self.x, self.y, self.z)
+        glVertex3f(self.x - 0.01, self.y - self.length, self.z)
+        glEnd()
+
+
+# --- Cyber Duck ---
+
+class Duck:
+    # Neon color schemes for each duck
+    SCHEMES = [
+        (NEON_PINK, NEON_CYAN),
+        (NEON_CYAN, NEON_PINK),
+        (NEON_YELLOW, NEON_PURPLE),
+        (NEON_GREEN, NEON_ORANGE),
+        (NEON_PURPLE, NEON_GREEN),
+    ]
+
+    def __init__(self, scheme_idx=0):
         self.quad = gluNewQuadric()
+        self.scheme_idx = scheme_idx % len(self.SCHEMES)
+        self.body_color = self.SCHEMES[self.scheme_idx][0]
+        self.accent_color = self.SCHEMES[self.scheme_idx][1]
+        self.reset()
 
     def reset(self):
         self.x = random.uniform(-3, 3)
@@ -227,26 +260,29 @@ class Duck:
         self.vx = random.choice([-1, 1]) * random.uniform(0.02, 0.06)
         self.vy = random.uniform(-0.01, 0.01)
         self.alive = True
-        self.hit_flash = 0  # frames to flash red when hit
+        self.hit_flash = 0
         self.wing_angle = random.uniform(0, math.pi * 2)
+        self.glow_phase = random.uniform(0, math.pi * 2)
 
     def update(self):
         if not self.alive:
             return
         self.x += self.vx
         self.y += self.vy
-
-        # Bounce off edges
         if self.x > 4.5 or self.x < -4.5:
             self.vx *= -1
         if self.y > 3.0 or self.y < 0.2:
             self.vy *= -1
-
         if self.hit_flash > 0:
             self.hit_flash -= 1
-
-        # Animate wings
         self.wing_angle += 0.15
+        self.glow_phase += 0.05
+
+    def _glow_color(self, base, intensity=1.0):
+        """Pulsing neon glow."""
+        pulse = 0.7 + 0.3 * math.sin(self.glow_phase)
+        r, g, b = base
+        return (r * pulse * intensity, g * pulse * intensity, b * pulse * intensity)
 
     def draw(self):
         if not self.alive:
@@ -254,138 +290,256 @@ class Duck:
         glPushMatrix()
         glTranslatef(self.x, self.y, self.z)
 
-        # Face direction of movement
         if self.vx < 0:
             glScalef(-1, 1, 1)
 
+        bc = self._glow_color(self.body_color)
+        ac = self._glow_color(self.accent_color)
+
+        # --- Glow halo (additive blending effect) ---
+        glPushMatrix()
+        glScalef(1.3, 1.3, 1.3)
+        glColor4f(bc[0] * 0.3, bc[1] * 0.3, bc[2] * 0.3, 0.15)
+        gluSphere(self.quad, 0.3, 12, 12)
+        glPopMatrix()
+
         # --- Body ---
         if self.hit_flash > 0:
-            glColor3f(1.0, 0.2, 0.2)
+            glColor3f(1.0, 1.0, 1.0)
         else:
-            glColor3f(1.0, 0.85, 0.0)
+            glColor3f(*bc)
         gluSphere(self.quad, 0.25, 20, 20)
+
+        # --- Neon wireframe ring around body ---
+        glColor4f(*ac, 0.6)
+        glPushMatrix()
+        glRotatef(90, 1, 0, 0)
+        gluDisk(self.quad, 0.24, 0.26, 20, 1)
+        glPopMatrix()
 
         # --- Head ---
         glPushMatrix()
         glTranslatef(0.2, 0.28, 0.0)
         if self.hit_flash > 0:
-            glColor3f(1.0, 0.2, 0.2)
+            glColor3f(1.0, 1.0, 1.0)
         else:
-            glColor3f(0.0, 0.55, 0.15)  # Green head like a mallard
+            glColor3f(*ac)
         gluSphere(self.quad, 0.14, 16, 16)
 
-        # --- Beak ---
+        # --- Visor/Eye (cyber eye) ---
         glPushMatrix()
-        glTranslatef(0.13, 0.0, 0.0)
+        glTranslatef(0.1, 0.04, 0.0)
+        glScalef(0.12, 0.04, 0.14)
+        glColor3f(1.0, 0.1, 0.1)  # Red visor
+        gluSphere(self.quad, 1.0, 8, 8)
+        glPopMatrix()
+
+        # Eye glow dot
+        glPushMatrix()
+        glTranslatef(0.12, 0.04, 0.05)
+        glColor3f(1.0, 0.0, 0.0)
+        gluSphere(self.quad, 0.02, 6, 6)
+        glPopMatrix()
+
+        # --- Beak (metallic) ---
+        glPushMatrix()
+        glTranslatef(0.13, -0.02, 0.0)
         glRotatef(90, 0, 1, 0)
-        glColor3f(1.0, 0.5, 0.0)
-        gluCylinder(self.quad, 0.04, 0.02, 0.12, 8, 4)
-        glPopMatrix()
-
-        # --- Eye ---
-        glPushMatrix()
-        glTranslatef(0.08, 0.06, 0.1)
-        glColor3f(0.0, 0.0, 0.0)
-        gluSphere(self.quad, 0.03, 8, 8)
-        glPopMatrix()
-
-        # White eye ring
-        glPushMatrix()
-        glTranslatef(0.075, 0.06, 0.098)
-        glColor3f(1.0, 1.0, 1.0)
-        gluSphere(self.quad, 0.04, 8, 8)
+        glColor3f(0.5, 0.5, 0.55)
+        gluCylinder(self.quad, 0.04, 0.01, 0.14, 6, 2)
         glPopMatrix()
 
         glPopMatrix()  # end head
 
-        # --- Wings (animated) ---
-        wing_flap = math.sin(self.wing_angle) * 0.15
-        # Left wing
+        # --- Wings (animated, neon edges) ---
+        wing_flap = math.sin(self.wing_angle) * 0.18
+        for z_side in [0.22, -0.22]:
+            glPushMatrix()
+            glTranslatef(-0.05, 0.05 + wing_flap * (1 if z_side > 0 else -1), z_side)
+            glScalef(0.5, 0.2, 0.06)
+            if self.hit_flash > 0:
+                glColor3f(1.0, 1.0, 1.0)
+            else:
+                glColor4f(*bc, 0.8)
+            gluSphere(self.quad, 0.35, 8, 8)
+            glPopMatrix()
+
+        # --- Tail (angular, cyber) ---
         glPushMatrix()
-        glTranslatef(-0.05, 0.05 + wing_flap, 0.22)
-        glScalef(0.5, 0.25, 0.08)
-        if self.hit_flash > 0:
-            glColor3f(0.9, 0.2, 0.2)
-        else:
-            glColor3f(0.55, 0.35, 0.15)  # Brown wing
-        gluSphere(self.quad, 0.3, 10, 10)
-        glPopMatrix()
-        # Right wing
-        glPushMatrix()
-        glTranslatef(-0.05, 0.05 + wing_flap, -0.22)
-        glScalef(0.5, 0.25, 0.08)
-        if self.hit_flash > 0:
-            glColor3f(0.9, 0.2, 0.2)
-        else:
-            glColor3f(0.55, 0.35, 0.15)
-        gluSphere(self.quad, 0.3, 10, 10)
+        glTranslatef(-0.3, 0.12, 0.0)
+        glRotatef(-25, 0, 0, 1)
+        glScalef(0.25, 0.08, 0.15)
+        glColor3f(*ac)
+        gluSphere(self.quad, 0.3, 6, 6)
         glPopMatrix()
 
-        # --- Tail ---
+        # --- Antenna ---
         glPushMatrix()
-        glTranslatef(-0.28, 0.1, 0.0)
-        glRotatef(-20, 0, 0, 1)
-        glScalef(0.3, 0.12, 0.12)
-        glColor3f(0.4, 0.25, 0.1)
-        gluSphere(self.quad, 0.3, 8, 8)
+        glTranslatef(0.2, 0.42, 0.0)
+        glColor4f(*ac, 0.8)
+        glBegin(GL_LINES)
+        glVertex3f(0, 0, 0)
+        glVertex3f(0.05, 0.15, 0)
+        glEnd()
+        # Tip glow
+        glTranslatef(0.05, 0.15, 0)
+        pulse = 0.5 + 0.5 * math.sin(self.glow_phase * 3)
+        glColor4f(1.0, 0.2, 0.2, pulse)
+        gluSphere(self.quad, 0.02, 6, 6)
         glPopMatrix()
 
         glPopMatrix()  # end duck
 
     def get_screen_pos(self, viewport, modelview, projection):
-        """Project duck 3D position to 2D screen coords."""
         win = gluProject(self.x, self.y, self.z, modelview, projection, viewport)
-        return win[0], display[1] - win[1]  # flip Y
+        return win[0], display[1] - win[1]
 
     def is_hit(self, mouse_x, mouse_y, viewport, modelview, projection):
-        """Check if mouse click hits this duck using projected screen radius."""
         if not self.alive:
             return False
         sx, sy = self.get_screen_pos(viewport, modelview, projection)
-        # Approximate screen radius based on z depth
-        # Project a point offset by the duck radius
         edge = gluProject(self.x + 0.25, self.y, self.z, modelview, projection, viewport)
-        screen_radius = abs(edge[0] - sx) * 2.5  # a bit generous
+        screen_radius = abs(edge[0] - sx) * 2.5
         dist = math.sqrt((mouse_x - sx) ** 2 + (mouse_y - sy) ** 2)
         return dist < max(screen_radius, 20)
 
 
+# --- Holographic Particle ---
+
 class Particle:
-    def __init__(self, x, y, z):
+    def __init__(self, x, y, z, color_scheme):
         self.x = x
         self.y = y
         self.z = z
-        self.vx = random.uniform(-0.05, 0.05)
-        self.vy = random.uniform(0.02, 0.08)
-        self.vz = random.uniform(-0.02, 0.02)
+        self.vx = random.uniform(-0.07, 0.07)
+        self.vy = random.uniform(0.02, 0.1)
+        self.vz = random.uniform(-0.03, 0.03)
         self.life = 1.0
         self.quad = gluNewQuadric()
-        # Random feather color
-        self.color = random.choice([
-            (1.0, 0.85, 0.0),   # yellow
-            (0.55, 0.35, 0.15), # brown
-            (0.0, 0.55, 0.15),  # green
-            (1.0, 0.5, 0.0),    # orange
-        ])
+        body_col, accent_col = color_scheme
+        self.color = random.choice([body_col, accent_col, (1.0, 1.0, 1.0)])
 
     def update(self):
         self.x += self.vx
         self.y += self.vy
-        self.vy -= 0.003  # gravity
-        self.life -= 0.04
+        self.vy -= 0.002
+        self.life -= 0.03
 
     def draw(self):
         glPushMatrix()
         glTranslatef(self.x, self.y, self.z)
         r, g, b = self.color
-        glColor3f(r * self.life, g * self.life, b * self.life)
-        gluSphere(self.quad, 0.04 * self.life, 6, 6)
+        glColor4f(r, g, b, self.life * 0.8)
+        gluSphere(self.quad, 0.035 * self.life, 6, 6)
         glPopMatrix()
 
 
+# --- Building for city skyline ---
+
+class Building:
+    def __init__(self, x, z, rng):
+        self.x = x
+        self.z = z
+        self.width = rng.uniform(0.4, 1.2)
+        self.depth = rng.uniform(0.3, 0.8)
+        self.height = rng.uniform(1.5, 6.0)
+        self.base_color = (rng.uniform(0.03, 0.08),
+                           rng.uniform(0.03, 0.07),
+                           rng.uniform(0.08, 0.15))
+        # Neon accent on top or side
+        accent_choices = [NEON_PINK, NEON_CYAN, NEON_PURPLE, NEON_YELLOW, NEON_ORANGE]
+        self.accent = accent_choices[rng.randint(0, len(accent_choices) - 1)]
+        # Windows: list of (wx, wy) normalized positions + on/off
+        self.windows = []
+        n_floors = max(1, int(self.height / 0.4))
+        n_cols = max(1, int(self.width / 0.25))
+        for floor in range(n_floors):
+            for col in range(n_cols):
+                if rng.random() < 0.6:
+                    wy = -1.0 + 0.3 + floor * 0.4
+                    wx_offset = -self.width / 2 + 0.15 + col * 0.25
+                    # Window color: warm yellow or cool cyan
+                    wc = (0.9, 0.8, 0.3) if rng.random() < 0.7 else (0.2, 0.7, 0.9)
+                    brightness = rng.uniform(0.3, 1.0)
+                    self.windows.append((wx_offset, wy, wc, brightness))
+
+    def draw(self, frame):
+        glPushMatrix()
+        glTranslatef(self.x, -1.0, self.z)
+
+        # Building body
+        r, g, b = self.base_color
+        hw = self.width / 2
+        hd = self.depth / 2
+        h = self.height
+
+        # Front face
+        glBegin(GL_QUADS)
+        glColor3f(r * 1.2, g * 1.2, b * 1.2)
+        glVertex3f(-hw, 0, hd)
+        glVertex3f(hw, 0, hd)
+        glVertex3f(hw, h, hd)
+        glVertex3f(-hw, h, hd)
+        # Right face
+        glColor3f(r * 0.8, g * 0.8, b * 0.8)
+        glVertex3f(hw, 0, hd)
+        glVertex3f(hw, 0, -hd)
+        glVertex3f(hw, h, -hd)
+        glVertex3f(hw, h, hd)
+        # Left face
+        glColor3f(r * 0.9, g * 0.9, b * 0.9)
+        glVertex3f(-hw, 0, -hd)
+        glVertex3f(-hw, 0, hd)
+        glVertex3f(-hw, h, hd)
+        glVertex3f(-hw, h, -hd)
+        # Back face
+        glColor3f(r * 0.6, g * 0.6, b * 0.6)
+        glVertex3f(hw, 0, -hd)
+        glVertex3f(-hw, 0, -hd)
+        glVertex3f(-hw, h, -hd)
+        glVertex3f(hw, h, -hd)
+        # Top
+        glColor3f(r * 0.5, g * 0.5, b * 0.7)
+        glVertex3f(-hw, h, -hd)
+        glVertex3f(hw, h, -hd)
+        glVertex3f(hw, h, hd)
+        glVertex3f(-hw, h, hd)
+        glEnd()
+
+        # Neon accent strip on top edge
+        ar, ag, ab = self.accent
+        pulse = 0.6 + 0.4 * math.sin(frame * 0.03 + self.x)
+        glColor4f(ar * pulse, ag * pulse, ab * pulse, 0.9)
+        glBegin(GL_QUADS)
+        glVertex3f(-hw - 0.02, h, hd + 0.02)
+        glVertex3f(hw + 0.02, h, hd + 0.02)
+        glVertex3f(hw + 0.02, h + 0.05, hd + 0.02)
+        glVertex3f(-hw - 0.02, h + 0.05, hd + 0.02)
+        glEnd()
+
+        # Windows on front face
+        glBegin(GL_QUADS)
+        for wx, wy, wc, bright in self.windows:
+            if wy > h - 0.3:
+                continue
+            # Flicker
+            flicker = bright * (0.85 + 0.15 * math.sin(frame * 0.07 + wx * 13.7 + wy * 7.3))
+            glColor4f(wc[0] * flicker, wc[1] * flicker, wc[2] * flicker, 0.9)
+            ws = 0.08
+            glVertex3f(wx - ws, wy + 1.0, hd + 0.01)
+            glVertex3f(wx + ws, wy + 1.0, hd + 0.01)
+            glVertex3f(wx + ws, wy + 1.0 + 0.15, hd + 0.01)
+            glVertex3f(wx - ws, wy + 1.0 + 0.15, hd + 0.01)
+        glEnd()
+
+        glPopMatrix()
+
+
+# --- Main Game ---
+
 class Game:
     def __init__(self):
-        self.ducks = [Duck() for _ in range(5)]
+        self.ducks = [Duck(i) for i in range(5)]
         self.score = 0
         self.misses = 0
         self.max_misses = 10
@@ -395,63 +549,37 @@ class Game:
         self.shoot_cooldown = 0
         self.frame = 0
         self.muted = False
-
-        # Shared quadric for scenery
         self.scenery_quad = gluNewQuadric()
 
-        # Generate mountain profiles (two layers)
-        rng = random.Random(12345)
-        self.mountains_back = []
-        x = -12
-        while x <= 12:
-            y = rng.uniform(2.5, 5.5)
-            self.mountains_back.append((x, y))
-            x += rng.uniform(0.8, 2.0)
-        self.mountains_back.append((12, rng.uniform(2.5, 4.0)))
+        # Rain
+        self.rain = [RainDrop() for _ in range(150)]
 
-        rng2 = random.Random(67890)
-        self.mountains_front = []
-        x = -12
-        while x <= 12:
-            y = rng2.uniform(1.5, 3.5)
-            self.mountains_front.append((x, y))
-            x += rng2.uniform(1.0, 2.5)
-        self.mountains_front.append((12, rng2.uniform(1.5, 3.0)))
+        # City skyline - buildings at various depths
+        rng = random.Random(42069)
+        self.buildings = []
+        # Far row
+        for i in range(20):
+            x = -12 + i * 1.3 + rng.uniform(-0.3, 0.3)
+            self.buildings.append(Building(x, rng.uniform(-14, -12), rng))
+        # Mid row
+        for i in range(15):
+            x = -10 + i * 1.5 + rng.uniform(-0.4, 0.4)
+            self.buildings.append(Building(x, rng.uniform(-11, -9.5), rng))
 
-        # Generate trees
-        rng3 = random.Random(11111)
-        self.trees = []
-        for _ in range(8):
-            tx = rng3.uniform(-8, 8)
-            tz = rng3.uniform(-11, -9)
-            height = rng3.uniform(0.8, 1.5)
-            canopy_r = rng3.uniform(0.3, 0.5)
-            self.trees.append((tx, tz, height, canopy_r))
+        # Neon signs data (positioned on buildings)
+        self.neon_signs = []
+        sign_texts = ["CYBER", "NEON", "2077", "DUCK", "HUNT", "SYNTH"]
+        for i in range(6):
+            sx = rng.uniform(-6, 6)
+            sy = rng.uniform(1.5, 4.0)
+            sz = rng.uniform(-13, -10)
+            color = [NEON_PINK, NEON_CYAN, NEON_YELLOW, NEON_PURPLE, NEON_ORANGE, NEON_GREEN][i]
+            self.neon_signs.append((sx, sy, sz, sign_texts[i], color))
 
-        # Generate bushes
-        self.bushes = []
-        for _ in range(6):
-            bx = rng3.uniform(-7, 7)
-            bz = rng3.uniform(-10, -8.5)
-            br = rng3.uniform(0.15, 0.3)
-            self.bushes.append((bx, bz, br))
+        # Ground grid color
+        self.grid_color_1 = NEON_CYAN
+        self.grid_color_2 = NEON_PINK
 
-        # Generate patchy ground colors (12x12 grid)
-        rng4 = random.Random(22222)
-        self.ground_colors = []
-        for i in range(12):
-            row = []
-            for j in range(12):
-                g = 0.35 + rng4.uniform(-0.08, 0.08)
-                r = 0.12 + rng4.uniform(-0.03, 0.03)
-                b = 0.08 + rng4.uniform(-0.03, 0.03)
-                row.append((r, g, b))
-            self.ground_colors.append(row)
-
-        # Generate clouds
-        self.clouds = [Cloud(self.scenery_quad) for _ in range(7)]
-
-        # Start music
         start_music()
 
     def handle_input(self):
@@ -477,8 +605,7 @@ class Game:
     def shoot(self, mouse_pos):
         if self.shoot_cooldown > 0:
             return
-
-        self.shoot_cooldown = 5  # short cooldown to prevent spam
+        self.shoot_cooldown = 5
 
         viewport = glGetIntegerv(GL_VIEWPORT)
         modelview = glGetDoublev(GL_MODELVIEW_MATRIX)
@@ -491,10 +618,10 @@ class Game:
                 duck.alive = False
                 self.score += 1
                 hit_any = True
-                # Spawn particles (feathers)
-                for _ in range(15):
-                    self.particles.append(Particle(duck.x, duck.y, duck.z))
-                break  # only hit one duck per shot
+                scheme = Duck.SCHEMES[duck.scheme_idx]
+                for _ in range(20):
+                    self.particles.append(Particle(duck.x, duck.y, duck.z, scheme))
+                break
 
         if not hit_any:
             self.misses += 1
@@ -503,7 +630,6 @@ class Game:
 
     def update(self):
         self.frame += 1
-
         if self.game_over:
             return
 
@@ -513,211 +639,223 @@ class Game:
         for duck in self.ducks:
             duck.update()
 
-        # Respawn dead ducks
         for i, duck in enumerate(self.ducks):
             if not duck.alive and duck.hit_flash == 0:
-                self.ducks[i] = Duck()
+                self.ducks[i] = Duck(random.randint(0, 4))
 
-        # Update particles
         self.particles = [p for p in self.particles if p.life > 0]
         for p in self.particles:
             p.update()
 
-        # Update clouds
-        for cloud in self.clouds:
-            cloud.update()
+        for drop in self.rain:
+            drop.update()
+
+    # --- Drawing methods ---
 
     def draw_sky(self):
-        """Draw gradient sky background."""
+        """Dark cyberpunk sky gradient."""
         glBegin(GL_QUADS)
-        # Bottom of sky: warm light blue
-        glColor3f(0.55, 0.75, 0.95)
+        # Bottom: dark purple haze
+        glColor3f(0.05, 0.02, 0.1)
         glVertex3f(-20, -1.0, -15)
         glVertex3f(20, -1.0, -15)
-        # Top of sky: deeper blue
-        glColor3f(0.1, 0.25, 0.65)
+        # Top: near black with slight blue
+        glColor3f(0.01, 0.01, 0.04)
         glVertex3f(20, 8.0, -15)
         glVertex3f(-20, 8.0, -15)
         glEnd()
 
-    def draw_sun(self):
-        """Draw the sun with rays."""
-        sun_x, sun_y, sun_z = -4.5, 5.5, -14.8
-
-        # Sun disc
-        glBegin(GL_TRIANGLE_FAN)
-        glColor3f(1.0, 0.95, 0.6)
-        glVertex3f(sun_x, sun_y, sun_z)
-        n_segments = 20
-        radius = 0.8
-        for i in range(n_segments + 1):
-            angle = 2 * math.pi * i / n_segments
-            glColor3f(1.0, 0.85, 0.4)
-            glVertex3f(sun_x + radius * math.cos(angle),
-                       sun_y + radius * math.sin(angle), sun_z)
-        glEnd()
-
-        # Sun rays
-        n_rays = 10
-        ray_inner = 0.85
-        ray_outer = 1.4
-        t = self.frame * 0.01  # slow rotation
-        glBegin(GL_TRIANGLES)
-        for i in range(n_rays):
-            angle = 2 * math.pi * i / n_rays + t
-            a1 = angle - 0.08
-            a2 = angle + 0.08
-            glColor4f(1.0, 0.9, 0.3, 0.6)
-            glVertex3f(sun_x + ray_inner * math.cos(a1),
-                       sun_y + ray_inner * math.sin(a1), sun_z)
-            glVertex3f(sun_x + ray_inner * math.cos(a2),
-                       sun_y + ray_inner * math.sin(a2), sun_z)
-            glColor4f(1.0, 0.95, 0.5, 0.0)
-            glVertex3f(sun_x + ray_outer * math.cos(angle),
-                       sun_y + ray_outer * math.sin(angle), sun_z)
-        glEnd()
-
-    def draw_mountains(self):
-        """Draw two layers of mountain silhouettes."""
-        # Back layer - blue-gray, taller
-        glBegin(GL_TRIANGLE_STRIP)
-        for x, y in self.mountains_back:
-            glColor3f(0.3, 0.33, 0.45)
-            glVertex3f(x, y, -14.5)
-            glColor3f(0.2, 0.25, 0.35)
-            glVertex3f(x, -1.0, -14.5)
-        glEnd()
-
-        # Front layer - green-gray, shorter
-        glBegin(GL_TRIANGLE_STRIP)
-        for x, y in self.mountains_front:
-            glColor3f(0.2, 0.38, 0.22)
-            glVertex3f(x, y, -13.5)
-            glColor3f(0.15, 0.3, 0.15)
-            glVertex3f(x, -1.0, -13.5)
-        glEnd()
-
-    def draw_clouds(self):
-        """Draw drifting clouds."""
-        for cloud in self.clouds:
-            cloud.draw()
-
-    def draw_trees(self):
-        """Draw trees and bushes in the background."""
-        for tx, tz, height, canopy_r in self.trees:
-            # Trunk
-            glPushMatrix()
-            glTranslatef(tx, -1.0, tz)
-            glRotatef(-90, 1, 0, 0)
-            glColor3f(0.35, 0.2, 0.08)
-            gluCylinder(self.scenery_quad, 0.06, 0.04, height, 8, 2)
-            glPopMatrix()
-
-            # Canopy - 2-3 stacked spheres
-            for i in range(3):
-                glPushMatrix()
-                glTranslatef(tx, -1.0 + height + i * canopy_r * 0.5,  tz)
-                glScalef(1.0, 0.75, 1.0)
-                g = 0.25 + i * 0.08
-                glColor3f(0.1, g, 0.08)
-                gluSphere(self.scenery_quad, canopy_r * (1.0 - i * 0.15), 10, 10)
-                glPopMatrix()
-
-        # Bushes
-        for bx, bz, br in self.bushes:
-            glPushMatrix()
-            glTranslatef(bx, -1.0 + br * 0.5, bz)
-            glScalef(1.2, 0.7, 1.0)
-            glColor3f(0.12, 0.35, 0.1)
-            gluSphere(self.scenery_quad, br, 8, 8)
-            glPopMatrix()
-
-    def draw_ground(self):
-        """Draw patchy grass ground."""
-        grid = 12
-        x_start, x_end = -10, 10
-        z_start, z_end = -15, 0
-        dx = (x_end - x_start) / grid
-        dz = (z_end - z_start) / grid
-
+        # Distant neon horizon glow
         glBegin(GL_QUADS)
-        for i in range(grid):
-            for j in range(grid):
-                r, g, b = self.ground_colors[i][j]
-                glColor3f(r, g, b)
-                x0 = x_start + j * dx
-                z0 = z_start + i * dz
-                glVertex3f(x0, -1.0, z0)
-                glVertex3f(x0 + dx, -1.0, z0)
-                glVertex3f(x0 + dx, -1.0, z0 + dz)
-                glVertex3f(x0, -1.0, z0 + dz)
+        t = self.frame * 0.01
+        glow_r = 0.15 + 0.05 * math.sin(t)
+        glow_b = 0.25 + 0.05 * math.sin(t * 0.7)
+        glColor4f(glow_r, 0.02, glow_b, 0.8)
+        glVertex3f(-20, -1.0, -14.99)
+        glVertex3f(20, -1.0, -14.99)
+        glColor4f(0, 0, 0, 0)
+        glVertex3f(20, 2.0, -14.99)
+        glVertex3f(-20, 2.0, -14.99)
         glEnd()
 
-    def draw_pond(self):
-        """Draw a small reflective pond on the ground."""
-        pond_x, pond_z = 2.5, -6.0
-        n_seg = 20
-        # Animated subtle color shift
-        t = self.frame * 0.02
-        blue_shift = 0.55 + 0.05 * math.sin(t)
+    def draw_city(self):
+        """Draw the cyberpunk city skyline."""
+        for bldg in self.buildings:
+            bldg.draw(self.frame)
 
-        glBegin(GL_TRIANGLE_FAN)
-        glColor3f(0.15, 0.3, blue_shift)
-        glVertex3f(pond_x, -0.99, pond_z)
-        for i in range(n_seg + 1):
-            angle = 2 * math.pi * i / n_seg
-            glColor3f(0.1, 0.25, blue_shift - 0.05)
-            glVertex3f(pond_x + 0.8 * math.cos(angle),
-                       -0.99,
-                       pond_z + 0.5 * math.sin(angle))
+    def draw_neon_grid(self):
+        """Draw the Tron-style neon grid floor."""
+        # Dark ground base
+        glBegin(GL_QUADS)
+        glColor3f(0.02, 0.02, 0.04)
+        glVertex3f(-10, -1.0, -15)
+        glVertex3f(10, -1.0, -15)
+        glVertex3f(10, -1.0, 2)
+        glVertex3f(-10, -1.0, 2)
         glEnd()
+
+        # Grid lines
+        grid_spacing = 1.0
+        t = self.frame * 0.015
+        # Scrolling Z offset for movement illusion
+        z_offset = (t * 0.5) % grid_spacing
+
+        # Z-direction lines (horizontal stripes moving toward camera)
+        for i in range(-15, 3):
+            z = i + z_offset
+            dist = abs(z + 5) / 10.0  # distance-based fade
+            alpha = max(0, 0.3 - dist * 0.2)
+            # Alternate colors
+            cr, cg, cb = self.grid_color_1 if i % 2 == 0 else self.grid_color_2
+            glColor4f(cr * 0.4, cg * 0.4, cb * 0.4, alpha)
+            glBegin(GL_LINES)
+            glVertex3f(-10, -0.99, z)
+            glVertex3f(10, -0.99, z)
+            glEnd()
+
+        # X-direction lines
+        for i in range(-10, 11):
+            dist = abs(i) / 10.0
+            alpha = max(0, 0.25 - dist * 0.15)
+            cr, cg, cb = self.grid_color_1
+            glColor4f(cr * 0.3, cg * 0.3, cb * 0.3, alpha)
+            glBegin(GL_LINES)
+            glVertex3f(i, -0.99, -15)
+            glVertex3f(i, -0.99, 2)
+            glEnd()
+
+    def draw_rain(self):
+        """Draw cyberpunk rain."""
+        for drop in self.rain:
+            drop.draw()
+
+    def draw_hud(self):
+        """Draw cyberpunk-styled HUD."""
+        # Score with neon glow effect (draw twice offset for glow)
+        draw_text_2d(f"SCORE: {self.score:04d}", 22, 22, font_large, (0, 80, 80))
+        draw_text_2d(f"SCORE: {self.score:04d}", 20, 20, font_large, (0, 255, 240))
+
+        misses_left = self.max_misses - self.misses
+        if misses_left <= 3:
+            color = (255, 20, 80)
+            shadow = (80, 0, 30)
+        else:
+            color = (200, 180, 255)
+            shadow = (60, 50, 80)
+        draw_text_2d(f"AMMO: {'|' * misses_left}{'.' * self.misses}", 22, 82, font_small, shadow)
+        draw_text_2d(f"AMMO: {'|' * misses_left}{'.' * self.misses}", 20, 80, font_small, color)
+
+        # Bottom bar
+        draw_text_2d("[LMB] FIRE  [M] MUTE  [ESC] EXIT", 20, display[1] - 35, font_tiny, (100, 80, 120))
+
+        # Top right - system status
+        pulse_alpha = int(128 + 127 * math.sin(self.frame * 0.05))
+        draw_text_2d("SYS:ONLINE", display[0] - 165, 20, font_small, (0, pulse_alpha, 0))
+        draw_text_2d(f"FRM:{self.frame:06d}", display[0] - 165, 45, font_tiny, (80, 80, 100))
+
+        # Scanline effect hint (thin lines)
+        if self.frame % 3 == 0:
+            scan_y = (self.frame * 2) % display[1]
+            draw_text_2d("_" * 100, 0, scan_y, font_tiny, (20, 20, 30))
+
+        if self.game_over:
+            # Glitch effect: offset text
+            ox = random.randint(-3, 3) if self.frame % 5 == 0 else 0
+            oy = random.randint(-2, 2) if self.frame % 7 == 0 else 0
+
+            # Background flash
+            draw_text_2d("SYSTEM FAILURE", display[0] // 2 - 190 + ox,
+                         display[1] // 2 - 70 + oy, font_large, (255, 0, 60))
+            draw_text_2d("SYSTEM FAILURE", display[0] // 2 - 188,
+                         display[1] // 2 - 72, font_large, (80, 0, 20))
+
+            draw_text_2d(f"FINAL SCORE: {self.score:04d}", display[0] // 2 - 160,
+                         display[1] // 2 + 5, font_medium, (0, 255, 240))
+            draw_text_2d("[R] REBOOT SYSTEM", display[0] // 2 - 130,
+                         display[1] // 2 + 55, font_small, (180, 180, 200))
+
+    def draw_crosshair(self):
+        """Draw a neon crosshair at mouse position."""
+        mx, my = pygame.mouse.get_pos()
+
+        glMatrixMode(GL_PROJECTION)
+        glPushMatrix()
+        glLoadIdentity()
+        glOrtho(0, display[0], display[1], 0, -1, 1)
+        glMatrixMode(GL_MODELVIEW)
+        glPushMatrix()
+        glLoadIdentity()
+        glDisable(GL_DEPTH_TEST)
+
+        size = 12
+        gap = 4
+        pulse = 0.7 + 0.3 * math.sin(self.frame * 0.1)
+
+        glColor4f(0.0, 1.0, 0.9, pulse * 0.9)
+        glLineWidth(2.0)
+        glBegin(GL_LINES)
+        # Top
+        glVertex2f(mx, my - size)
+        glVertex2f(mx, my - gap)
+        # Bottom
+        glVertex2f(mx, my + gap)
+        glVertex2f(mx, my + size)
+        # Left
+        glVertex2f(mx - size, my)
+        glVertex2f(mx - gap, my)
+        # Right
+        glVertex2f(mx + gap, my)
+        glVertex2f(mx + size, my)
+        glEnd()
+
+        # Center dot
+        glColor4f(1.0, 0.1, 0.5, pulse)
+        glPointSize(3.0)
+        glBegin(GL_POINTS)
+        glVertex2f(mx, my)
+        glEnd()
+
+        glLineWidth(1.0)
+        glEnable(GL_DEPTH_TEST)
+        glPopMatrix()
+        glMatrixMode(GL_PROJECTION)
+        glPopMatrix()
+        glMatrixMode(GL_MODELVIEW)
 
     def render(self):
+        glClearColor(*DARK_BG, 1.0)
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
         glLoadIdentity()
 
-        # Camera: slightly above ground looking forward
-        gluLookAt(0, 1, 2,   # eye
-                  0, 1, -5,  # center
-                  0, 1, 0)   # up
+        gluLookAt(0, 1, 2,
+                  0, 1, -5,
+                  0, 1, 0)
 
-        # Background (back to front)
         self.draw_sky()
-        self.draw_sun()
-        self.draw_mountains()
-        self.draw_clouds()
-        self.draw_trees()
-        self.draw_ground()
-        self.draw_pond()
+        self.draw_city()
+        self.draw_neon_grid()
+        self.draw_rain()
 
-        # Game objects
         for duck in self.ducks:
             duck.draw()
 
         for p in self.particles:
             p.draw()
 
-        # --- HUD ---
-        draw_text_2d(f"Score: {self.score}", 20, 20, font_large, (255, 230, 0))
-        misses_left = self.max_misses - self.misses
-        color = (255, 80, 80) if misses_left <= 3 else (200, 200, 200)
-        draw_text_2d(f"Misses left: {misses_left}", 20, 80, font_small, color)
-        draw_text_2d("Click to shoot | M: mute", display[0] - 310, 20, font_small, (180, 220, 255))
-
-        if self.game_over:
-            draw_text_2d("GAME OVER", display[0] // 2 - 160, display[1] // 2 - 60, font_large, (255, 60, 60))
-            draw_text_2d(f"Final Score: {self.score}", display[0] // 2 - 110, display[1] // 2 + 10, font_small, (255, 230, 0))
-            draw_text_2d("Press R to restart", display[0] // 2 - 120, display[1] // 2 + 50, font_small, (200, 200, 200))
+        self.draw_crosshair()
+        self.draw_hud()
 
         pygame.display.flip()
 
     def run(self):
+        pygame.mouse.set_visible(False)
         running = True
         while running:
             running = self.handle_input()
             self.update()
             self.render()
             self.clock.tick(60)
+        pygame.mouse.set_visible(True)
         pygame.quit()
 
 
