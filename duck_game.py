@@ -906,6 +906,16 @@ class Game:
         # Gunshot sound
         pygame.mixer.Channel(5).play(self.snd_gunshot)
 
+        # Set up fresh matrices for hit detection (avoids stale GL state)
+        glMatrixMode(GL_PROJECTION)
+        glPushMatrix()
+        glLoadIdentity()
+        gluPerspective(45, (display[0] / display[1]), 0.1, 50.0)
+        glMatrixMode(GL_MODELVIEW)
+        glPushMatrix()
+        glLoadIdentity()
+        gluLookAt(0, 1, 2, 0, 1, -5, 0, 1, 0)
+
         viewport = glGetIntegerv(GL_VIEWPORT)
         modelview = glGetDoublev(GL_MODELVIEW_MATRIX)
         projection = glGetDoublev(GL_PROJECTION_MATRIX)
@@ -957,6 +967,12 @@ class Game:
             self.misses += 1
             if self.misses >= self.max_misses:
                 self.game_over = True
+
+        # Restore matrices
+        glPopMatrix()
+        glMatrixMode(GL_PROJECTION)
+        glPopMatrix()
+        glMatrixMode(GL_MODELVIEW)
 
     def update(self):
         self.frame += 1
